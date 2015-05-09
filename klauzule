@@ -1,0 +1,72 @@
+#!/usr/bin/perl
+use Getopt::Std;
+
+sub usage{
+	return
+"Usage:
+	klauzule [-n <broj riječi>] [-o <output file>] <input>\n"
+}
+
+sub overwrite_prompt {
+
+	$file = @_[0];
+	
+	local $| = 1; # autoflush - print se izvršava odmah, a ne (potencijalno) na kraju programa
+
+	print "File $file already exists. Do you want to overwrite it? (y/n)\n";
+	chomp($resp = <STDIN>);
+	
+	unless(lc($resp) eq "y"){
+		die "Aborting...\n";
+	}
+}
+
+%opts;
+getopts("n:o:", \%opts);
+
+$n = defined $opts{'n'} ? $opts{'n'} : 3;
+
+my $input = shift or die usage();
+$output;
+
+if(defined $opts{'o'}){
+
+	$output = $opts{'o'};
+	
+	if(-e $output){
+		overwrite_prompt($output);
+	}
+}
+else{
+	$output = "klauzule-$n-$input";
+	
+	if(-e $output){
+		overwrite_prompt($output);
+	}
+}
+
+unless(open INPUT, $input) {
+	die "Unable to open input file.\n";
+}
+	
+unless(open OUTPUT, '>'.$output) {
+	die "Unable to create output file.\n";
+}
+
+while (<INPUT>) {
+
+	if (/\w/) {
+		chomp;
+		$_ = lc;
+		s/[^\w\s]//g;
+		s/[\d\r]//g;
+		s/v/u/g;
+		s/j/i/g;
+
+		$klauzule{join(" ", (split)[-$n..-1])}++; # Magic. Do not touch.
+	}
+}
+
+for $key (sort {$klauzule{$b}<=>$klauzule{$a}} keys %klauzule) {
+	print OUTPUT "$key\t$klauzule{$key}\n";
+}

@@ -1,0 +1,70 @@
+#!/usr/bin/perl
+
+MySAXHandler;
+use XML::SAX;
+
+open $fh, shift or die "Unesite ime xml datoteke\n";
+
+my $parser = XML::SAX::ParserFactory->parser(
+        Handler => MySAXHandler->new
+  );
+
+$parser->parse_file($fh);
+
+
+package MySAXHandler;
+
+use base qw(XML::SAX::Base);
+
+$has_attributes = 0;
+$is_stop_word = 0;
+
+sub start_document {
+	# print "Document loaded\n";
+}
+
+sub start_element {
+	my $self = shift;
+	my $data = shift;
+
+	$pos = $data->{Attributes}->{'{}pos'}->{Value};
+	$lemma = $data->{Attributes}->{'{}lemma'}->{Value};
+
+	if($pos eq "prijedlog" || $pos eq "veznik" || $pos eq "zamjenica"){
+		$is_stop_word = 1;
+	}
+	else {
+		$is_stop_word = 0;
+	}
+
+	if ($lemma ne "" && ! $is_stop_word) {
+		
+		$has_attributes = 1;
+		print "$lemma ";
+	}
+	elsif($lemma eq ""){
+		$has_attributes = 0;
+	}
+}
+
+sub characters {
+	my $self = shift;
+	my $data = shift;
+
+	$word = $data->{Data};
+
+	print "$word" unless $has_attributes || $is_stop_word;
+}
+
+sub end_element {
+	my $self = shift;
+	my $data = shift;
+
+	$el_name = $data->{Name};
+
+	if ($el_name eq "l") {
+		print "\n";
+	}
+}
+
+1;

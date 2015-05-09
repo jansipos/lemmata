@@ -1,0 +1,90 @@
+#!/usr/bin/perl
+
+use Algorithm::Combinatorics qw(combinations);
+use Getopt::Std;
+
+sub usage {
+	return
+"Usage:
+	kombinacije [-k <broj riječi>] <input>\n"
+}
+
+sub overwrite_prompt {
+
+	$file = @_[0];
+	
+	local $| = 1; # autoflush - print se izvršava odmah, a ne (potencijalno) na kraju programa
+
+	print "File $file already exists. Do you want to overwrite it? (y/n)\n";
+	chomp($resp = <STDIN>);
+	
+	unless(lc($resp) eq "y"){
+		die "Aborting...\n";
+	}
+}
+
+%opts;
+%kombinacije;
+$k;
+
+getopts('k:o:', \%opts);
+
+$k = ( defined $opts{'k'} ? $opts{'k'} : 3 );
+
+my $input = shift or die usage();
+$output;
+
+if(defined $opts{'o'}){
+
+	$output = $opts{'o'};
+	
+	if(-e $output){
+		overwrite_prompt($output);
+	}
+}
+else{
+	$output = "kombinacije-$k-$input";
+	
+	if(-e $output){
+		overwrite_prompt($output);
+	}
+}
+
+unless(open INPUT, $input) {
+	die "Unable to open input file.\n";
+}
+	
+unless(open OUTPUT, '>'.$output) {
+	die "Unable to create output file.\n";
+}
+
+
+while (<INPUT>) {
+	
+	if (/\w/) {
+		chomp;
+		$_ = lc;
+		s/[^\w\s]//g;
+		s/[\d\r]//g;
+
+		@arr = split / /,$_;
+		$iterator = combinations(\@arr,$k);
+
+		while ($comb = $iterator->next){
+			
+			@curr = @$comb;
+
+			for(sort @curr){
+				$str .= "$_ ";
+			}
+
+			$kombinacije{$str}++;
+			$str = "";
+		}
+	}
+}
+
+for (sort {$kombinacije{$b} <=> $kombinacije{$a}} keys %kombinacije) {
+	
+	print OUTPUT "$_\t$kombinacije{$_}\n";
+}

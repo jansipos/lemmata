@@ -1,0 +1,118 @@
+#!/usr/bin/perl
+
+%all_forms;
+
+open INPUT, shift or die "Unesite ime datoteke s tekstom za lematizaciju.\n";
+open BAZA, "/Users/jansipos/bin/perl/resource/POS-baza.txt" or die $!;
+
+@que_words = qw(absque abusque adaeque adusque alterutrimque atque circumquaque circumundique cujusmodicumque cumque cunque denique donique hucusque inique inseque inusque itaque jamjamque namque nanque neque neutique nuncusque peraeque perubique plerique plerumque quacumque qualitercumque quandocumque quandoque quantuluscumque quantulusquisque quantumcumque quaque quescumque quicque quicumque quoadusque quocumque quomodocumque quoque quotcumque quotienscumque quotiensque quotuscumque quotusquisque quousque simulatque ubicumque ubiquaque ubique undecumque undique usque usquequaque utcumque utique utrimque utrobique utroque utrubique);
+for (@que_words) {$que{$_} = 1}
+
+while (<BAZA>){
+
+	chomp;
+	lc;
+	
+	@forms = split;
+	
+	$POS = shift @forms; # prva riječ u svakom redu je vrsta riječi
+	
+	@lemmata = ($forms[0]); # iduća je riječ lema, sada na prvom mjestu
+	
+	for $form (@forms){
+		
+		if( ! exists $all_forms{$form} ){ # ako već ne postoji, dodaje oblik i njegovu lemu
+			
+			@{$all_forms{$form}{lemma}} = @lemmata;
+			$all_forms{$form}{POS} = $POS;
+		}
+		else{ # ako već postoji taj oblik
+		
+			unless( $forms[0] ~~ @{$all_forms{$form}{lemma}} ){ # ako već ne postoji homonimna lema za taj oblik
+				
+				push @{$all_forms{$form}{lemma}}, $forms[0]; # dodaje novu lemu u popis lema za taj oblik
+			}
+		}
+	}
+}
+
+
+# POČETAK XML DOKUMENTA
+
+print "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<?xml-stylesheet type=\"text/xsl\" href=\"de-solis.xsl\"?>\n<text>\n<body>\n";
+
+$book_number = 0;
+$is_title = 0; # boolean; istinit ako je trenutna linija naslov knjige
+
+while (<INPUT>){
+	
+	$_ = lc; # pretvara u mala slova
+	$_ =~ s/[^\w\s]//g; # uklanja interpunkciju
+	
+	@words = split unless /^$/;
+	
+	$is_title = 1 if /(^liber\s|^ad\spotentissimum)/; # hack za naslov posvetnog pisma
+	
+	for $word (@words){
+	
+		$out = $word; # sprema oblik kakav je u tekstu za output
+	
+		if($word =~ m/que$/ && $que{$word} != 1){ # miče -que ako nije dio leme
+			$word =~ s/que$//;
+		}
+		
+		@lemmata = @{$all_forms{$word}{lemma}};
+		$POS = $all_forms{$word}{POS};
+		
+		if (@lemmata != 0){
+	
+			if (@lemmata == 1){
+				
+				$word = "<w lemma=\"$lemmata[0]\" pos=\"$POS\">$out<\/w>";
+			}
+			elsif (@lemmata > 1) {
+				
+				$word = "<w lemma=\"";
+							
+				for $lemma (@lemmata){
+				
+					$word .= "$lemma ";
+				}
+				$word =~ s/\s$//;
+				$word .= "\" pos=\"dubium\">$out<\/w>";
+			}
+		}
+		else{
+		
+			$word = "<w>$word<\/w>";
+		}
+	}
+	if(@words){
+	
+		if($is_title){
+			
+			unless($book_number == 0){ # ako nije prva knjiga, zatvori prethodnu
+			
+				print "<\/div>\n";
+			}
+			
+			print "<div type=\"book\" n=\"$book_number\">\n<head>";
+			
+			for $word (@words){ print "$word " }
+
+			print "<\/head>\n";
+			
+			$is_title = 0;
+			$book_number++;
+		}
+		else{
+
+			print "<l>";
+			for $word (@words){ print "$word " }
+			print "<\/l>\n";
+		}
+	}	
+	@words = ();
+}
+
+print "<\/div>\n<\/body>\n<\/text>"; # KRAJ XML DOKUMENTA

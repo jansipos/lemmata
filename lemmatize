@@ -1,0 +1,179 @@
+#!/usr/bin/perl
+
+### PODRŽATI ###
+# - historijski infinitiv
+# - kontrahirani infinitiv (-asse, -isse)
+# - kontrahirani perfekt (-asti, -ere, -ivi/ii)
+# - ablativ na -e u pridjevima 3. dkl.
+# - akuzativ na -im u imenicama 3. dkl.
+
+use Getopt::Std;
+
+sub usage {
+	return "USAGE:	lemmatize [-o <output file>] [-s] <input file>\n";
+}
+
+sub overwrite_prompt {
+
+	$file = @_[0];
+	
+	local $| = 1;
+		
+	print "File $file already exists. Do you want to overwrite it? (y/n)\n";
+	chomp($resp = <STDIN>);
+	
+	unless(lc($resp) eq "y"){
+		die "Aborting...\n";
+	}
+}
+
+my %opts;
+
+getopts('o:s', \%opts);
+
+my $input = shift or die usage();
+my $output;
+
+if(defined $opts{'o'}){
+	
+	$output = $opts{'o'};
+	
+	if(-e $output){
+		overwrite_prompt($output);
+	}
+}
+else{
+	$output = "lemmata-$input";
+	
+	if(-e $output){
+		overwrite_prompt($output);
+	}
+}
+
+unless(open INPUT, $input) {
+	die "Unable to open input file.\n";
+}
+	
+unless(open OUTPUT, '>'.$output) {
+	die "Unable to create output file.\n";
+}
+
+
+### POCETAK PROGRAMA ###
+
+%all_forms;
+@queries;
+
+%lemma_count;
+
+$exclude_stopwords = (defined $opts{'s'} ? 1 : 0);
+
+@stopwords = qw(prijedlog veznik zamjenica);
+
+@que_words = qw(absque abusque adaeque adusque aeque alterutrimque atque circumquaque circumundique cuiusmodicumque cumque cunque denique donique hucusque inique inseque inusque itaque iamiamque namque nanque neque neutique nuncusque peraeque perubique plerique plerumque quacumque qualitercumque quandocumque quandoque quantuluscumque quantulusquisque quantumcumque quaque quescumque quicque quicumque quicunque quinque quoadusque quocumque quomodocumque quoque quotcumque quotienscumque quotiensque quotuscumque quotusquisque quousque simulatque ubicumque ubiquaque ubique undecumque undique usque usquequaque utcumque utique utrimque utrobique utroque utrubique);
+
+for (@que_words) {
+	$que{$_} = 1;
+}
+
+open BAZA, "/Users/jansipos/bin/perl/resource/novo-POS-baza.txt" or die $!;
+
+while (<BAZA>){
+
+	chomp;
+	@forms = split;
+	
+	$POS = shift @forms;
+
+	@lemmata = ($forms[0]);
+	
+	for $form (@forms){ 
+		
+		if( ! exists $all_forms{$form} ){ # ako već ne postoji, dodaje oblik i njegovu lemu
+	
+			@{$all_forms{$form}{lemma}} = @lemmata;
+			$all_forms{$form}{POS} = $POS;
+		}
+		else{ # ako već postoji taj oblik
+		
+			unless( $forms[0] ~~ @{$all_forms{$form}{lemma}} ){ # ako već ne postoji homonimna lema za taj oblik
+				
+				push @{$all_forms{$form}{lemma}}, $forms[0]; # dodaje novu lemu u popis lema za taj oblik
+			}
+		}
+	}
+}
+
+while (<INPUT>){
+	
+	chomp;
+
+	$_ = lc;
+	$_ =~ s/[^\w\s]//g;
+	$_ =~ s/v/u/g;
+	$_ =~ s/j/i/g;
+	
+	push @queries, split;
+}
+
+
+for $query (@queries){
+
+	if($query =~ m/que$/ && $que{$query} != 1){ # miče -que ako nije dio leme
+			$query =~ s/que$//;
+	}
+	
+	@out = @{$all_forms{$query}{lemma}}; # array s lemama za traženi oblik
+	$POS = $all_forms{$query}{POS};
+
+	if (@out != 0){
+	
+		if (@out == 1){
+
+			if ($exclude_stopwords == 1) { # ako je zadano -s, preskace prijedloge, veznike i zamjenice
+				next if $POS ~~ @stopwords;
+			}
+
+			print OUTPUT "$query => $out[0]";
+			$lemma_count{$out[0]}++;
+		}
+		elsif (@out > 1) {
+			
+			print OUTPUT "$query => ";
+			
+			for $lemma (@out){
+			
+				print OUTPUT "$lemma ";
+				$lemma_count{$lemma}++;
+			}	
+		}
+		print OUTPUT "\n";
+	}
+	else {
+		$not_found{$query}++;
+	}
+}
+
+print OUTPUT "\nSTATISTIKA\n\n";
+
+for $key (keys %lemma_count) { # ukupan broj pojavaka svih lema
+	$total += $lemma_count{$key};
+}
+
+for $key (sort { $lemma_count{$b} <=> $lemma_count{$a} } keys %lemma_count){ # sortira hash po broju pojavaka svake leme
+	
+# 	$postotak = ($lemma_count{$key} / $total) * 100;
+# 	printf OUTPUT "$key: $lemma_count{$key} (%.2f%)\n", $postotak;
+	print OUTPUT "$key: $lemma_count{$key}\n";
+}
+
+print OUTPUT "\nNEPOZNATI OBLICI\n\n";
+
+for $key (sort { $not_found{$b} <=> $not_found{$a} } keys %not_found){ # sortira hash po broju pojavaka svake leme
+	
+	print OUTPUT "$key: $not_found{$key}\n";
+}
+
+
+
+

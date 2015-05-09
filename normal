@@ -1,0 +1,75 @@
+#!/usr/bin/perl
+
+use Getopt::Std;
+
+sub usage {
+	return "USAGE:	normal [-o <output file>] <input file>\n";
+}
+
+sub overwrite_prompt {
+
+	$file = @_[0];
+	
+	local $| = 1;
+		
+	print "File $file already exists. Do you want to overwrite it? (y/n)\n";
+	chomp($resp = <STDIN>);
+	
+	unless(lc($resp) eq "y"){
+		die "Aborting...\n";
+	}
+}
+
+my %opts;
+
+getopts('o:', \%opts);
+
+my $input = shift or die usage();
+my $output;
+
+if(defined $opts{'o'}){
+	
+	$output = $opts{'o'};
+	
+	if(-e $output){
+		overwrite_prompt($output);
+	}
+}
+else{
+	$output = "normal-$input";
+	
+	if(-e $output){
+		overwrite_prompt($output);
+	}
+}
+
+unless(open INPUT, $input) {
+	die "Unable to open input file.\n";
+}
+	
+unless(open OUTPUT, '>'.$output) {
+	die "Unable to create output file.\n";
+}
+
+### POCETAK PROGRAMA ###
+
+while(<INPUT>){
+	
+	chomp;
+	
+	$_ = lc; # pretvara u mala slova
+	
+	s/[^a-z\s]//g; # uklanja interpunkciju i brojeve
+	s/\s{2,}/ /g; # pretvara 2 ili više razmaka u jedan
+	s/^\s+//g; # uklanja razmake na početku reda
+	s/\s+$//g; # uklanja razmake na kraju reda
+	s/j/i/g; # pretvara "j" u "i"
+	s/v/u/g; # pretvara "v" u "u"
+	
+	print OUTPUT "$_\n" unless /^$/; # uklanja prazne redove
+
+}
+
+close INPUT;
+close OUTPUT;;
+

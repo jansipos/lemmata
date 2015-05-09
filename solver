@@ -1,0 +1,243 @@
+#!/usr/bin/perl
+
+use Getopt::Std;
+
+sub usage {
+	return "USAGE:	solver [-o <output file>] <input file>\n";
+}
+
+sub overwrite_prompt {
+
+	$file = @_[0];
+	
+	local $| = 1;
+		
+	print "File $file already exists. Do you want to overwrite it? (y/n)\n";
+	chomp($resp = <STDIN>);
+	
+	unless(lc($resp) eq "y"){
+		die "Aborting...\n";
+	}
+}
+
+my %opts;
+
+getopts('o:', \%opts);
+
+my $input = shift or die usage();
+my $output;
+
+if(defined $opts{'o'}){
+	
+	$output = $opts{'o'};
+	
+	if(-e $output){
+		overwrite_prompt($output);
+	}
+}
+else{
+	$output = "solved-$input";
+	
+	$output =~ s/txt$/xml/;
+	
+	if(-e $output){
+		overwrite_prompt($output);
+	}
+}
+
+unless(open INPUT, $input) {
+	die "Unable to open input file.\n";
+}
+	
+unless(open OUTPUT, '>'.$output) {
+	die "Unable to create output file.\n";
+}
+
+### Početak programa ###
+
+%all_forms;
+%prob;
+
+open BAZA, "/Users/jansipos/bin/perl/resource/novo-POS-baza.txt" or die $!;
+open FREKVENCIJE, "/Users/jansipos/bin/perl/resource/freq-per10k.txt" or die;
+
+@que_words = qw(absque abusque adaeque adusque alterutrimque atque circumquaque circumundique cujusmodicumque cumque cunque denique donique hucusque inique inseque inusque itaque jamjamque namque nanque neque neutique nuncusque peraeque perubique plerique plerumque quacumque qualitercumque quandocumque quandoque quantuluscumque quantulusquisque quantumcumque quaque quescumque quicque quicumque quoadusque quocumque quomodocumque quoque quotcumque quotienscumque quotiensque quotuscumque quotusquisque quousque simulatque ubicumque ubiquaque ubique undecumque undique usque usquequaque utcumque utique utrimque utrobique utroque utrubique);
+for (@que_words) {$que{$_} = 1}
+
+while (<BAZA>){
+
+	chomp;
+	lc;
+	
+	@forms = split;
+	
+	$POS = shift @forms; # prva riječ u svakom redu je vrsta riječi
+	
+	@lemmata = ($forms[0]);
+	
+	for $form (@forms){
+		
+		if( ! exists $all_forms{$form} ){ # ako već ne postoji, dodaje oblik i njegovu lemu
+			
+			@{$all_forms{$form}{lemma}} = @lemmata;
+			$all_forms{$form}{POS} = $POS;
+		}
+		else{ # ako već postoji taj oblik
+		
+			unless( $forms[0] ~~ @{$all_forms{$form}{lemma}} ){ # ako već ne postoji homonimna lema za taj oblik
+				
+				push @{$all_forms{$form}{lemma}}, $forms[0]; # dodaje novu lemu u popis lema za taj oblik
+			}
+		}
+	}
+}
+
+while(<FREKVENCIJE>){
+
+	@l = split;
+	$curr_lemma = $l[0];
+	$curr_prob = $l[1];
+	
+	$curr_lemma = lc $curr_lemma;
+	$curr_lemma =~ s/j/i/g;
+	$curr_lemma =~ s/v/u/g;
+	
+	if (! defined $prob{$curr_lemma} ||
+	 	$prob{$curr_lemma} < $curr_prob ){
+		
+		$prob{$curr_lemma} = $curr_prob; # ako vec postoji homonimna lema, uzmi onu s vecom vjerojatnoscu
+	}
+}
+
+
+# POČETAK XML DOKUMENTA
+
+print OUTPUT "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<?xml-stylesheet type=\"text/xsl\" href=\"\"?>\n<text>\n<body>\n";
+
+$book_number = 0;
+$is_title = 0; # istinit ako je trenutna linija naslov knjige
+$is_devided = 0; # istinit ako je djelo podjeljeno na knjige
+
+while (<INPUT>){
+	
+	$_ = lc; # pretvara u mala slova
+	$_ =~ s/[^\w\s]//g; # uklanja interpunkciju
+	
+	@words = split unless /^$/;
+	
+	$is_title = 1 if /(^liber\s|^ad\spotentissimum)/; # hack za naslov posvetnog pisma
+	
+#	$currentIndex = 0; # prati index trenutne riječi u @words radi dohvaćanja drugih riječi u istom redu 
+	
+	for $word (@words){
+	
+#		$currentIndex++;
+		
+		$out = $word; # sprema oblik kakav je u tekstu za output
+	
+		if($word =~ m/que$/ && $que{$word} != 1){ # miče -que ako nije dio leme
+			$word =~ s/que$//;
+		}
+		
+		$word =~ s/v/u/g;
+		$word =~ s/j/i/g;
+		
+		@lemmata = @{$all_forms{$word}{lemma}};
+		$POS = $all_forms{$word}{POS};
+		
+		if (@lemmata != 0){
+	
+			if (@lemmata == 1){
+				
+				$word = "<w lemma=\"$lemmata[0]\" pos=\"$POS\">$out<\/w>";
+			}
+			elsif (@lemmata > 1) {
+				
+				$resolved_lemma = resolve_lemmata(\@lemmata);
+				
+				if ($resolved_lemma ne ""){
+				
+					$word = "<w lemma=\"$resolved_lemma\" pos=\"$all_forms{$resolved_lemma}{POS}\">$out<\/w>";
+				}
+				else {
+					
+					$out = $word;
+					$word = "<w lemma=\"";
+				
+					for $lemma (@lemmata){
+					
+						$word .= "$lemma ";
+					}
+					$word =~ s/\s$//;
+					$word .= "\" pos=\"dubium\">$out<\/w>";
+				}
+			}
+		}
+		else{
+		
+			$word = "<w>$word<\/w>";
+		}
+	}
+	if(@words){
+	
+		if($is_title){
+		
+			$is_devided = 1;
+			
+			unless($book_number == 0){ # ako nije prva knjiga, zatvori prethodnu
+			
+				print OUTPUT "<\/div>\n";
+			}
+			
+			print OUTPUT "<div type=\"book\" n=\"$book_number\">\n<head>";
+			
+			for $word (@words){ print OUTPUT "$word " }
+
+			print OUTPUT "<\/head>\n";
+			
+			$is_title = 0;
+			$book_number++;
+		}
+		else{
+
+			print OUTPUT "<l>";
+			for $word (@words){ print OUTPUT "$word " }
+			print OUTPUT "<\/l>\n";
+		}
+	}	
+	@words = ();
+}
+
+print OUTPUT "<\/div>\n" if $is_devided;
+print OUTPUT "<\/body>\n<\/text>"; # KRAJ XML DOKUMENTA
+
+
+
+sub resolve_lemmata {
+
+	@lemmata_dubia = @{$_[0]};
+	
+	$max = 0;
+	$max_lemma = "";
+	
+	for $lemma (@lemmata_dubia){
+	
+		$curr_prob = $prob{$lemma};
+		
+		if($curr_prob > $max){
+			
+			$max = $curr_prob;
+			$max_lemma = $lemma;
+		}
+	}
+	return $max_lemma;
+}
+
+
+
+
+
+
+
+
+
